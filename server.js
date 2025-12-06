@@ -19,8 +19,9 @@ app.use(helmet());
 app.use(cors({
   origin: [
     'http://localhost:3000',
-    'https://lending-platform-campus-crate.vercel.app',
-    'https://lending-platform-campus-crate.vercel.app/'
+    'https://campus-crate-zeta.vercel.app',
+    'https://campus-crate-git-main-yashxcrazys-projects.vercel.app',
+    'https://campus-crate-jog4fiqpd-yashxcrazys-projects.vercel.app'
   ],
   credentials: true
 }));
