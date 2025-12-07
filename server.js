@@ -17,14 +17,27 @@ const app = express();
 console.log('Setting up middleware...');
 app.use(helmet());
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:5000',
-    'https://campus-crate-zeta.vercel.app',
-    'https://campus-crate-git-main-yashxcrazys-projects.vercel.app',
-    'https://campus-crate-jog4fiqpd-yashxcrazys-projects.vercel.app'
-  ],
-  credentials: true
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, Postman, curl)
+    if (!origin) return callback(null, true);
+    
+    // Allow localhost for development
+    if (origin.includes('localhost')) {
+      return callback(null, true);
+    }
+    
+    // Allow ALL your Vercel deployments (any URL with vercel.app and your pattern)
+    if (origin.includes('vercel.app') && 
+        (origin.includes('campus-crate') || origin.includes('lending-platform-campus-crate'))) {
+      return callback(null, true);
+    }
+    
+    // Reject other origins
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
