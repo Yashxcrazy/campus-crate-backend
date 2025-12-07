@@ -4,6 +4,12 @@ const LendingRequest = require('../models/LendingRequest');
 const Item = require('../models/Item');
 const Notification = require('../models/Notification');
 const authenticateToken = require('../middleware/auth');
+const {
+  sendSlackNotification,
+  formatNewLendingRequestNotification,
+  formatRequestAcceptedNotification
+} = require('../utils/slack');
+const User = require('../models/User');
 
 // Create lending request
 router.post('/request', authenticateToken, async (req, res) => {
@@ -40,6 +46,14 @@ router.post('/request', authenticateToken, async (req, res) => {
     });
 
     await lendingRequest.save();
+    try {
+      const borrower = await User.findById(req.userId);
+      await sendSlackNotification(
+        formatNewLendingRequestNotification(lendingRequest, item, borrower)
+      );
+    } catch (slackError) {
+      console.error('Slack notification failed:', slackError.message);
+    }
     await lendingRequest.populate(['item', 'borrower', 'lender']);
 
     const notification = new Notification({
@@ -135,6 +149,13 @@ router.post('/:id/accept', authenticateToken, async (req, res) => {
 
     request.status = 'Accepted';
     await request.save();
+    try {
+      await sendSlackNotification(
+        formatRequestAcceptedNotification(lendingRequest, item)
+      );
+    } catch (slackError) {
+      console.error('Slack notification failed:', slackError.message);
+    }
 
     const item = await Item.findById(request.item._id);
     item.availability = 'Rented';

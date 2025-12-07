@@ -1,4 +1,4 @@
-console.log('Starting server...');
+console.log('Starting Campus Crate Server...');
 
 const express = require('express');
 const mongoose = require('mongoose');
@@ -19,6 +19,7 @@ app.use(helmet());
 app.use(cors({
   origin: [
     'http://localhost:3000',
+    'http://localhost:5000',
     'https://campus-crate-zeta.vercel.app',
     'https://campus-crate-git-main-yashxcrazys-projects.vercel.app',
     'https://campus-crate-jog4fiqpd-yashxcrazys-projects.vercel.app'
@@ -30,41 +31,53 @@ app.use(express.urlencoded({ extended: true }));
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100 // limit each IP to 100 requests per windowMs
 });
 app.use('/api/', limiter);
 
-// MongoDB Connection
+// MongoDB Connection - SECURITY FIX: Only use environment variable
 console.log('Connecting to MongoDB...');
-console.log('MongoDB URI:', process.env.MONGODB_URI);
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://mmzankyani_db_user:cU0exLpZWzEwDfxb@cluster0.vbmk5rv.mongodb.net/campus_crate?retryWrites=true&w=majority';
-mongoose.connect(MONGODB_URI)
-
-.then(() => console.log('✅ MongoDB connected successfully'))
-.catch(err => {
-  console.error('❌ MongoDB connection error:', err);
+if (!process.env.MONGODB_URI) {
+  console.error('❌ ERROR: MONGODB_URI not set in environment variables!');
+  console.error('Please create a .env file with your MongoDB connection string.');
   process.exit(1);
-});
+}
+
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => {
+    console.log('✅ MongoDB connected successfully');
+    console.log(`📊 Database: ${mongoose.connection.name}`);
+  })
+  .catch(err => {
+    console.error('❌ MongoDB connection error:', err);
+    process.exit(1);
+  });
 
 // Import Routes
 console.log('Loading routes...');
 const authRoutes = require('./routes/auth');
 const itemRoutes = require('./routes/Items');
 const lendingRoutes = require('./routes/Lending');
+const messageRoutes = require('./routes/Messages');
+const uploadRoutes = require('./routes/Upload');
 
 // Use Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/lending', lendingRoutes);
+app.use('/api/messages', messageRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
   res.status(200).json({ 
     status: 'OK', 
     message: 'Campus Crate API is running',
-    timestamp: new Date() 
+    timestamp: new Date(),
+    environment: process.env.NODE_ENV,
+    database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
   });
 });
 
@@ -77,7 +90,19 @@ app.get('/', (req, res) => {
       health: '/health',
       auth: '/api/auth',
       items: '/api/items',
-      lending: '/api/lending'
+      lending: '/api/lending',
+      messages: '/api/messages',
+      upload: '/api/upload'
+    }
+  });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    error: {
+      message: 'Endpoint not found',
+      path: req.path
     }
   });
 });
@@ -95,11 +120,12 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-console.log('Starting server on port', PORT);
+console.log(`Starting server on port ${PORT}...`);
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📍 http://localhost:${PORT}`);
+  console.log(`📍 Environment: ${process.env.NODE_ENV}`);
+  console.log(`🌐 Local: http://localhost:${PORT}`);
 });
 
 console.log('Server setup complete!');
