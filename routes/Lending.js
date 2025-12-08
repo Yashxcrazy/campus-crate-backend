@@ -106,6 +106,26 @@ router.get('/my-requests', authenticateToken, async (req, res) => {
 });
 
 // Get single lending request
+router.get('/my-rentals', authenticateToken, async (req, res) => {
+  try {
+    // Find all items owned by the user
+    const Item = require('../models/Item');
+    const userItems = await Item.find({ owner: req.userId }).select('_id');
+    const itemIds = userItems.map(item => item._id);
+    
+    // Find lending requests for those items
+    const rentals = await LendingRequest.find({
+      item: { $in: itemIds }
+    })
+      .populate('item')
+      .populate('borrower', 'name email profileImage rating')
+      .sort({ createdAt: -1 });
+    
+    res.json(rentals);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const request = await LendingRequest.findById(req.params.id)
@@ -259,5 +279,6 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
+
 
 module.exports = router;
