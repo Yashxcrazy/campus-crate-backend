@@ -99,7 +99,7 @@ router.get('/my-requests', authenticateToken, async (req, res) => {
       .populate('lender', 'name profileImage rating university')
       .sort({ createdAt: -1 });
 
-    res.json(requests);
+    res.json({ data: requests });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -121,7 +121,7 @@ router.get('/my-rentals', authenticateToken, async (req, res) => {
       .populate('borrower', 'name email profileImage rating')
       .sort({ createdAt: -1 });
     
-    res.json(rentals);
+    res.json({ data: rentals });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
