@@ -24,6 +24,20 @@ router.get('/', async (req, res) => {
     if (category) query.category = category;
     if (availability) query.availability = availability;
     if (campus) query['location.campus'] = campus;
+    if (req.query.owner === 'me') {
+  if (req.headers.authorization) {
+    try {
+      const jwt = require('jsonwebtoken');
+      const token = req.headers.authorization.replace('Bearer ', '');
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      query.owner = decoded.userId;
+    } catch (err) {
+      return res.status(401).json({ message: 'Invalid token' });
+    }
+  } else {
+    return res.status(401).json({ message: 'Authentication required' });
+  }
+}
     if (minPrice || maxPrice) {
       query.dailyRate = {};
       if (minPrice) query.dailyRate.$gte = Number(minPrice);
