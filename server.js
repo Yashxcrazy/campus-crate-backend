@@ -75,6 +75,8 @@ const itemRoutes = require('./routes/Items');
 const lendingRoutes = require('./routes/Lending');
 const messageRoutes = require('./routes/Messages');
 const uploadRoutes = require('./routes/Upload');
+const userRoutes = require('./routes/Users');
+const reviewRoutes = require('./routes/Reviews');
 
 // Use Routes
 app.use('/api/auth', authRoutes);
@@ -82,6 +84,8 @@ app.use('/api/items', itemRoutes);
 app.use('/api/lending', lendingRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
