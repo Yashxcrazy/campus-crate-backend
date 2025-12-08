@@ -59,7 +59,21 @@ router.get('/', async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
-
+// Get current user's items - must be BEFORE /user/:userId route
+router.get('/user/my-items', authenticateToken, async (req, res) => {
+  try {
+    const items = await Item.find({
+      owner: req.userId,
+      isActive: true
+    })
+      .populate('owner', 'name profileImage rating')
+      .sort({ createdAt: -1 });
+    
+    res.json(items);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
 // Get single item
 router.get('/:id', async (req, res) => {
   try {
@@ -188,5 +202,6 @@ router.get('/user/:userId', async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
+
 
 module.exports = router;
