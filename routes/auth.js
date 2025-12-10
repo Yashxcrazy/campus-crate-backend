@@ -27,7 +27,7 @@ router.post('/register', async (req, res) => {
     await user.save();
 
     const token = jwt.sign(
-      { userId: user._id },
+      { userId: user._id, id: user._id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -40,7 +40,8 @@ router.post('/register', async (req, res) => {
         name: user.name,
         email: user.email,
         university: user.university,
-        isVerified: user.isVerified
+        isVerified: user.isVerified,
+        role: user.role
       }
     });
   } catch (error) {
@@ -67,7 +68,7 @@ router.post('/login', async (req, res) => {
     await user.save();
 
     const token = jwt.sign(
-      { userId: user._id },
+      { userId: user._id, id: user._id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -82,7 +83,8 @@ router.post('/login', async (req, res) => {
         university: user.university,
         profileImage: user.profileImage,
         rating: user.rating,
-        isVerified: user.isVerified
+        isVerified: user.isVerified,
+        role: user.role
       }
     });
   } catch (error) {
@@ -91,15 +93,17 @@ router.post('/login', async (req, res) => {
 });
 
 // Get current user
-router.get('/me', authenticateToken, async (req, res) => {
+router.get('/me', (req, res) => {
   try {
-    const user = await User.findById(req.userId).select('-password');
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+    const auth = req.headers.authorization || '';
+    if (!auth.startsWith('Bearer ')) {
+      return res.status(200).json({ success: false, user: null });
     }
-    res.json(user);
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    const token = auth.split(' ')[1];
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    res.json({ success: true, user: payload });
+  } catch (err) {
+    return res.status(200).json({ success: false, user: null });
   }
 });
 

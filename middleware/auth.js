@@ -13,6 +13,7 @@ const authenticateToken = (req, res, next) => {
       return res.status(403).json({ message: 'Invalid or expired token' });
     }
     req.userId = decoded.userId;
+    req.user = decoded;
     next();
   });
 };
