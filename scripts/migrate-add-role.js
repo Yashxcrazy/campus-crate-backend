@@ -12,12 +12,12 @@ async function run() {
   console.log('Connected to DB');
 
   const res = await User.updateMany({ role: { $exists: false } }, { $set: { role: 'user' } });
-  console.log('Updated users without role:', res.nModified || res.modifiedCount || res.n);
+  console.log('Updated users without role:', res.modifiedCount);
 
   const adminEmail = process.env.ADMIN_EMAIL;
   if (adminEmail) {
     const r2 = await User.updateOne({ email: adminEmail }, { $set: { role: 'admin' } });
-    console.log(`Promoted ${adminEmail} to admin:`, r2.nModified || r2.modifiedCount || r2.n);
+    console.log(`Promoted ${adminEmail} to admin:`, r2.modifiedCount);
   } else {
     console.log('No ADMIN_EMAIL provided; no admin created');
   }

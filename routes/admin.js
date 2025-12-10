@@ -24,7 +24,7 @@ router.put('/users/:id/role', auth, isAdmin, async (req, res) => {
     const user = await User.findByIdAndUpdate(
       req.params.id,
       { role },
-      { new: true, fields: 'name email role' },
+      { new: true, select: 'name email role' },
     );
 
     if (!user) return res.status(404).json({ error: 'User not found' });
