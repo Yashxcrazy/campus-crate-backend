@@ -45,9 +45,9 @@ router.get('/', async (req, res) => {
     }
     if (search) {
       query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { tags: { $regex: search, $options: 'i' } }
+        { title: { $regex: search, $options: 'i' }, isActive: true },
+        { description: { $regex: search, $options: 'i' }, isActive: true },
+        { tags: { $regex: search, $options: 'i' }, isActive: true }
       ];
     }
 
@@ -156,7 +156,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const item = await Item.findById(req.params.id);
 
-    if (!item) {
+    if (!item || !item.isActive) {
       return res.status(404).json({ message: 'Item not found' });
     }
 
