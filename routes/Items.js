@@ -161,64 +161,213 @@ router.post('/', authenticateToken, async (req, res) => {
 // Update item
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
-    const item = await Item.findById(req.params.id);
+    const itemId = req.params.id;
 
-    if (!item || !item.isActive) {
-      return res.status(404).json({ message: 'Item not found' });
+    // Validate if ID is a valid MongoDB ObjectId
+    if (!itemId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Invalid item ID format',
+        itemId 
+      });
     }
 
+    // Find the item
+    const item = await Item.findById(itemId);
+
+    if (!item) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Item not found',
+        itemId 
+      });
+    }
+
+    // Check if item is deleted (soft delete check)
+    if (!item.isActive) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Item has been deleted',
+        itemId 
+      });
+    }
+
+    // Check authorization - only owner can update
     if (item.owner.toString() !== req.userId) {
-      return res.status(403).json({ message: 'Not authorized to update this item' });
+      return res.status(403).json({ 
+        success: false,
+        message: 'Not authorized to update this item',
+        itemId 
+      });
     }
 
+    // Validate and apply updates
     const updates = req.body;
-    Object.keys(updates).forEach(key => {
-      item[key] = updates[key];
-    });
-
-    const savedItem = await item.save();
-    if (!savedItem) {
-      return res.status(500).json({ message: 'Failed to save item changes to database' });
+    if (!updates || Object.keys(updates).length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'No updates provided',
+        itemId 
+      });
     }
-    
-    // Refetch the item to get the updated data with populated owner
-    const updatedItem = await Item.findById(item._id)
-      .populate('owner', 'name profileImage rating');
 
-    res.json({
-      message: 'Item updated successfully',
-      item: updatedItem
+    // List of immutable fields that cannot be updated
+    const immutableFields = ['_id', 'owner', 'createdAt'];
+    
+    // Apply updates (skip immutable fields)
+    Object.keys(updates).forEach(key => {
+      if (!immutableFields.includes(key)) {
+        item[key] = updates[key];
+      }
     });
+
+    // Save the updated item
+    const savedItem = await item.save();
+    
+    if (!savedItem) {
+      console.error('Update failed - save returned null for item:', itemId);
+      return res.status(500).json({ 
+        success: false,
+        message: 'Failed to save item updates to database',
+        itemId 
+      });
+    }
+
+    // Refetch with populated owner to ensure complete data
+    const updatedItem = await Item.findById(itemId)
+      .populate('owner', 'name profileImage rating reviewCount campus phone email');
+
+    if (!updatedItem) {
+      console.error('Update verification failed - cannot refetch item:', itemId);
+      return res.status(500).json({ 
+        success: false,
+        message: 'Item updated but verification failed',
+        itemId 
+      });
+    }
+
+    // Return the updated document
+    res.status(200).json({
+      success: true,
+      message: 'Item updated successfully',
+      data: {
+        _id: updatedItem._id,
+        title: updatedItem.title,
+        description: updatedItem.description,
+        category: updatedItem.category,
+        images: updatedItem.images,
+        condition: updatedItem.condition,
+        dailyRate: updatedItem.dailyRate,
+        securityDeposit: updatedItem.securityDeposit,
+        availability: updatedItem.availability,
+        location: updatedItem.location,
+        tags: updatedItem.tags,
+        minLendingPeriod: updatedItem.minLendingPeriod,
+        maxLendingPeriod: updatedItem.maxLendingPeriod,
+        viewCount: updatedItem.viewCount,
+        favoriteCount: updatedItem.favoriteCount,
+        owner: updatedItem.owner,
+        isActive: updatedItem.isActive,
+        createdAt: updatedItem.createdAt,
+        updatedAt: updatedItem.updatedAt
+      }
+    });
+
   } catch (error) {
     console.error('Update item error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error while updating item',
+      error: error.message,
+      itemId: req.params.id
+    });
   }
 });
 
 // Delete item
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
-    const item = await Item.findById(req.params.id);
+    const itemId = req.params.id;
+    
+    // Validate if ID is a valid MongoDB ObjectId
+    if (!itemId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Invalid item ID format',
+        itemId 
+      });
+    }
+
+    // Find the item first
+    const item = await Item.findById(itemId);
 
     if (!item) {
-      return res.status(404).json({ message: 'Item not found' });
+      return res.status(404).json({ 
+        success: false,
+        message: 'Item not found',
+        itemId 
+      });
     }
 
+    // Check authorization - only owner can delete
     if (item.owner.toString() !== req.userId) {
-      return res.status(403).json({ message: 'Not authorized to delete this item' });
+      return res.status(403).json({ 
+        success: false,
+        message: 'Not authorized to delete this item',
+        itemId 
+      });
     }
 
+    // Check if already deleted
+    if (!item.isActive) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Item already deleted',
+        itemId 
+      });
+    }
+
+    // Perform soft delete - set isActive to false
     item.isActive = false;
-    const deletedItem = await item.save();
+    const result = await item.save();
     
-    if (!deletedItem) {
-      return res.status(500).json({ message: 'Failed to delete item from database' });
+    // Verify the save was successful
+    if (!result || result.isActive !== false) {
+      console.error('Delete failed - save verification failed for item:', itemId);
+      return res.status(500).json({ 
+        success: false,
+        message: 'Failed to delete item - database save failed',
+        itemId 
+      });
     }
 
-    res.json({ message: 'Item deleted successfully', itemId: item._id });
+    // Verify deletion by fetching again
+    const verifyDeleted = await Item.findById(itemId);
+    if (verifyDeleted && verifyDeleted.isActive !== false) {
+      console.error('Delete verification failed for item:', itemId);
+      return res.status(500).json({ 
+        success: false,
+        message: 'Failed to verify deletion - item still active in database',
+        itemId 
+      });
+    }
+
+    // Return successful response
+    res.status(200).json({ 
+      success: true,
+      message: 'Item deleted successfully',
+      itemId,
+      deletedAt: new Date()
+    });
+    
   } catch (error) {
     console.error('Delete item error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error while deleting item',
+      error: error.message,
+      itemId: req.params.id
+    });
   }
 });
 

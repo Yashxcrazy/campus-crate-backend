@@ -19,29 +19,42 @@ app.set('trust proxy', 1);
 // Middleware
 console.log('Setting up middleware...');
 app.use(helmet());
+
+// CORS Configuration
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+  : [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'https://lending-platform-campus-crate.vercel.app',
+      'https://campus-crate-zeta.vercel.app'
+    ];
+
+console.log('📋 Allowed CORS origins:', allowedOrigins);
+
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, Postman, curl)
-    if (!origin) return callback(null, true);
-    
-    // Allow localhost for development
-    if (origin.includes('localhost')) {
+    // Allow requests with no origin (mobile apps, Postman, curl, server-to-server)
+    if (!origin) {
       return callback(null, true);
     }
     
-    // Allow ALL your Vercel deployments (any URL with vercel.app and your pattern)
-    if (origin.includes('vercel.app') && 
-        (origin.includes('campus-crate') || origin.includes('lending-platform-campus-crate'))) {
+    // Check if origin is in the allowed list
+    if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
     
-    // Reject other origins
-    callback(new Error('Not allowed by CORS'));
+    // Log rejected origin for debugging
+    console.warn('⚠️ CORS blocked origin:', origin);
+    callback(new Error(`CORS policy: Origin ${origin} is not allowed`));
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Length', 'X-Request-Id'],
+  maxAge: 600 // Cache preflight request for 10 minutes
 }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -52,24 +65,45 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// MongoDB Connection - SECURITY FIX: Only use environment variable
+// MongoDB Connection - starts in degraded mode if URI missing
 console.log('Connecting to MongoDB...');
 
+let mongoConnected = false;
+
 if (!process.env.MONGODB_URI) {
-  console.error('❌ ERROR: MONGODB_URI not set in environment variables!');
-  console.error('Please create a .env file with your MongoDB connection string.');
-  process.exit(1);
+  console.warn('⚠️ WARNING: MONGODB_URI not set in environment variables!');
+  console.warn('⚠️ Server starting in DEGRADED MODE - database endpoints will not work');
+  console.warn('⚠️ Set MONGODB_URI in your environment to enable database features');
+} else {
+  mongoose.connect(process.env.MONGODB_URI, {
+    // Connection options for better reliability
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+  })
+    .then(() => {
+      mongoConnected = true;
+      console.log('✅ MongoDB connected successfully');
+      console.log(`📊 Database: ${mongoose.connection.name}`);
+    })
+    .catch(err => {
+      console.error('❌ MongoDB connection error:', err.message);
+      console.warn('⚠️ Server starting in DEGRADED MODE - database features unavailable');
+      console.warn('ℹ️  Non-database endpoints (health check, etc.) will still work');
+    });
 }
 
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => {
-    console.log('✅ MongoDB connected successfully');
-    console.log(`📊 Database: ${mongoose.connection.name}`);
-  })
-  .catch(err => {
-    console.error('❌ MongoDB connection error:', err);
-    process.exit(1);
-  });
+// Add middleware to check DB connection for API routes
+app.use('/api/', (req, res, next) => {
+  if (!mongoConnected && !process.env.MONGODB_URI) {
+    console.warn(`⚠️ Blocked ${req.method} ${req.path} - MongoDB not configured`);
+    return res.status(503).json({
+      error: 'Service Unavailable',
+      message: 'Database is not configured. Please set MONGODB_URI environment variable.',
+      status: 503
+    });
+  }
+  next();
+});
 
 // Import Routes
 console.log('Loading routes...');
