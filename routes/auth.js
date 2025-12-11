@@ -7,13 +7,13 @@ const authenticateToken = require('../middleware/auth');
 // Register
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password, phone, university, campus, studentId } = req.body;
+    const { name, email, password, phone, campus, studentId } = req.body;
 
     // Validate required fields
-    if (!name || !email || !password || !university) {
+    if (!name || !email || !password) {
       return res.status(400).json({ 
         message: 'Missing required fields',
-        required: ['name', 'email', 'password', 'university']
+        required: ['name', 'email', 'password']
       });
     }
 
@@ -38,7 +38,6 @@ router.post('/register', async (req, res) => {
       email,
       password,
       phone,
-      university,
       campus,
       studentId
     });
@@ -58,7 +57,6 @@ router.post('/register', async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        university: user.university,
         campus: user.campus,
         phone: user.phone,
         profileImage: user.profileImage,
@@ -104,7 +102,6 @@ router.post('/login', async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        university: user.university,
         profileImage: user.profileImage,
         rating: user.rating,
         isVerified: user.isVerified,

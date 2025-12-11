@@ -23,9 +23,6 @@ const userSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
-  university: {
-    type: String
-  },
   campus: String,
   studentId: String,
   profileImage: String,
