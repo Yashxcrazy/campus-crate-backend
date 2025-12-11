@@ -55,7 +55,7 @@ router.get('/', async (req, res) => {
     sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
 
     const items = await Item.find(query)
-      .populate('owner', 'name profileImage rating university campus')
+      .populate('owner', 'name profileImage rating campus')
       .sort(sort)
       .limit(limit * 1)
       .skip((page - 1) * limit)

@@ -5,6 +5,21 @@ const Review = require('../models/Review');
 const authenticateToken = require('../middleware/auth');
 const { upload, uploadToCloudinary } = require('../utils/cloudinary');
 
+// Get user reviews - must come BEFORE /:userId
+router.get('/:userId/reviews', async (req, res) => {
+  try {
+    const reviews = await Review.find({ reviewee: req.params.userId })
+      .populate('reviewer', 'name profileImage')
+      .populate('item', 'title')
+      .sort({ createdAt: -1 })
+      .limit(20);
+    
+    res.json(reviews);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Get user by ID
 router.get('/:userId', async (req, res) => {
   try {
@@ -50,21 +65,6 @@ router.put('/profile', authenticateToken, upload.single('profileImage'), async (
       message: 'Profile updated successfully',
       user: updatedUser
     });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
-
-// Get user reviews
-router.get('/:userId/reviews', async (req, res) => {
-  try {
-    const reviews = await Review.find({ reviewee: req.params.userId })
-      .populate('reviewer', 'name profileImage')
-      .populate('item', 'title')
-      .sort({ createdAt: -1 })
-      .limit(20);
-    
-    res.json(reviews);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }

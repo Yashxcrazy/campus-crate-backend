@@ -54,7 +54,7 @@ router.post('/', authenticateToken, async (req, res) => {
       reviewee: revieweeId,
       rating,
       comment,
-      itemCondition
+      type: lendingRequest.borrower.toString() === req.userId ? 'Borrower' : 'Lender'
     });
     
     await review.save();

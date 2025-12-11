@@ -4,6 +4,32 @@ const Message = require('../models/Message');
 const LendingRequest = require('../models/LendingRequest');
 const authenticateToken = require('../middleware/auth');
 
+// Get unread message count - MUST COME BEFORE /lending/:lendingId
+router.get('/unread/count', authenticateToken, async (req, res) => {
+  try {
+    // Find all lending requests where user is involved
+    const userLendingRequests = await LendingRequest.find({
+      $or: [
+        { borrower: req.userId },
+        { lender: req.userId }
+      ]
+    }).select('_id');
+    
+    const lendingRequestIds = userLendingRequests.map(lr => lr._id);
+    
+    // Count unread messages from others
+    const count = await Message.countDocuments({
+      lendingRequest: { $in: lendingRequestIds },
+      sender: { $ne: req.userId },
+      isRead: false
+    });
+    
+    res.json({ unreadCount: count });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Get messages for a lending request
 router.get('/lending/:lendingId', authenticateToken, async (req, res) => {
   try {
@@ -80,32 +106,6 @@ router.post('/', authenticateToken, async (req, res) => {
       message: 'Message sent successfully',
       data: message
     });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
-
-// Get unread message count
-router.get('/unread/count', authenticateToken, async (req, res) => {
-  try {
-    // Find all lending requests where user is involved
-    const userLendingRequests = await LendingRequest.find({
-      $or: [
-        { borrower: req.userId },
-        { lender: req.userId }
-      ]
-    }).select('_id');
-    
-    const lendingRequestIds = userLendingRequests.map(lr => lr._id);
-    
-    // Count unread messages from others
-    const count = await Message.countDocuments({
-      lendingRequest: { $in: lendingRequestIds },
-      sender: { $ne: req.userId },
-      isRead: false
-    });
-    
-    res.json({ unreadCount: count });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
