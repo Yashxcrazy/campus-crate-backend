@@ -289,8 +289,11 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const itemId = req.params.id;
     
+    console.log('DELETE request for item:', itemId, 'by user:', req.userId);
+    
     // Validate if ID is a valid MongoDB ObjectId
     if (!itemId.match(/^[0-9a-fA-F]{24}$/)) {
+      console.warn('Invalid ObjectId format:', itemId);
       return res.status(400).json({ 
         success: false,
         message: 'Invalid item ID format',
@@ -300,8 +303,10 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 
     // Find the item first
     const item = await Item.findById(itemId);
+    console.log('Found item:', item ? 'yes' : 'no');
 
     if (!item) {
+      console.warn('Item not found:', itemId);
       return res.status(404).json({ 
         success: false,
         message: 'Item not found',
@@ -310,7 +315,9 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     }
 
     // Check authorization - only owner can delete
+    console.log('Item owner:', item.owner.toString(), 'Request user:', req.userId);
     if (item.owner.toString() !== req.userId) {
+      console.warn('Unauthorized delete attempt for item:', itemId);
       return res.status(403).json({ 
         success: false,
         message: 'Not authorized to delete this item',
@@ -320,6 +327,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 
     // Check if already deleted
     if (!item.isActive) {
+      console.warn('Item already deleted:', itemId);
       return res.status(404).json({ 
         success: false,
         message: 'Item already deleted',
@@ -327,31 +335,49 @@ router.delete('/:id', authenticateToken, async (req, res) => {
       });
     }
 
-    // Perform soft delete - set isActive to false
-    item.isActive = false;
-    const result = await item.save();
+    // Perform soft delete using findByIdAndUpdate for reliability
+    console.log('Performing soft delete for item:', itemId);
+    const deletedItem = await Item.findByIdAndUpdate(
+      itemId,
+      { isActive: false },
+      { new: true, runValidators: false }
+    );
     
-    // Verify the save was successful
-    if (!result || result.isActive !== false) {
-      console.error('Delete failed - save verification failed for item:', itemId);
+    console.log('Delete result - isActive:', deletedItem?.isActive);
+    
+    if (!deletedItem) {
+      console.error('Delete returned null for item:', itemId);
       return res.status(500).json({ 
         success: false,
-        message: 'Failed to delete item - database save failed',
+        message: 'Failed to delete item - update returned null',
         itemId 
       });
     }
 
-    // Verify deletion by fetching again
-    const verifyDeleted = await Item.findById(itemId);
-    if (verifyDeleted && verifyDeleted.isActive !== false) {
-      console.error('Delete verification failed for item:', itemId);
+    if (deletedItem.isActive !== false) {
+      console.error('Delete failed - isActive is still true for item:', itemId);
       return res.status(500).json({ 
         success: false,
-        message: 'Failed to verify deletion - item still active in database',
+        message: 'Failed to delete item - isActive flag not updated',
         itemId 
       });
     }
 
+    // Final verification
+    const verify = await Item.findById(itemId);
+    console.log('Verification - item isActive:', verify?.isActive);
+    
+    if (verify && verify.isActive !== false) {
+      console.error('Verification failed - item still active:', itemId);
+      return res.status(500).json({ 
+        success: false,
+        message: 'Delete verification failed - item still active',
+        itemId 
+      });
+    }
+
+    console.log('✅ Item successfully deleted:', itemId);
+    
     // Return successful response
     res.status(200).json({ 
       success: true,
