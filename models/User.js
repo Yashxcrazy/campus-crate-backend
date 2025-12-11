@@ -24,8 +24,7 @@ const userSchema = new mongoose.Schema({
     trim: true
   },
   university: {
-    type: String,
-    required: true
+    type: String
   },
   campus: String,
   studentId: String,
