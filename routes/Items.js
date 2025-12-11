@@ -140,11 +140,14 @@ router.post('/', authenticateToken, async (req, res) => {
     });
 
     await item.save();
-    await item.populate('owner', 'name profileImage rating');
+    
+    // Refetch the item to get populated owner data
+    const createdItem = await Item.findById(item._id)
+      .populate('owner', 'name profileImage rating');
 
     res.status(201).json({
       message: 'Item created successfully',
-      item
+      item: createdItem
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -171,10 +174,14 @@ router.put('/:id', authenticateToken, async (req, res) => {
 
     await item.save();
     await item.populate('owner', 'name profileImage rating');
+    
+    // Refetch the item to get the updated data with populated owner
+    const updatedItem = await Item.findById(item._id)
+      .populate('owner', 'name profileImage rating');
 
     res.json({
       message: 'Item updated successfully',
-      item
+      item: updatedItem
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
