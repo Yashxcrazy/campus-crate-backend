@@ -139,10 +139,13 @@ router.post('/', authenticateToken, async (req, res) => {
       maxLendingPeriod
     });
 
-    await item.save();
+    const savedItem = await item.save();
+    if (!savedItem) {
+      return res.status(500).json({ message: 'Failed to save item to database' });
+    }
     
     // Refetch the item to get populated owner data
-    const createdItem = await Item.findById(item._id)
+    const createdItem = await Item.findById(savedItem._id)
       .populate('owner', 'name profileImage rating');
 
     res.status(201).json({
@@ -150,6 +153,7 @@ router.post('/', authenticateToken, async (req, res) => {
       item: createdItem
     });
   } catch (error) {
+    console.error('Create item error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -172,8 +176,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
       item[key] = updates[key];
     });
 
-    await item.save();
-    await item.populate('owner', 'name profileImage rating');
+    const savedItem = await item.save();
+    if (!savedItem) {
+      return res.status(500).json({ message: 'Failed to save item changes to database' });
+    }
     
     // Refetch the item to get the updated data with populated owner
     const updatedItem = await Item.findById(item._id)
@@ -184,6 +190,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
       item: updatedItem
     });
   } catch (error) {
+    console.error('Update item error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -202,10 +209,15 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     }
 
     item.isActive = false;
-    await item.save();
+    const deletedItem = await item.save();
+    
+    if (!deletedItem) {
+      return res.status(500).json({ message: 'Failed to delete item from database' });
+    }
 
-    res.json({ message: 'Item deleted successfully' });
+    res.json({ message: 'Item deleted successfully', itemId: item._id });
   } catch (error) {
+    console.error('Delete item error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
