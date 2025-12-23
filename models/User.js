@@ -51,6 +51,27 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  // Preferences
+  notificationPreferences: {
+    email: { type: Boolean, default: true },
+    sms: { type: Boolean, default: false },
+  },
+  privacyPreferences: {
+    showEmail: { type: Boolean, default: true },
+    showPhone: { type: Boolean, default: false },
+  },
+  // Moderation
+  isBanned: {
+    type: Boolean,
+    default: false,
+  },
+  banReason: {
+    type: String,
+    trim: true,
+  },
+  bannedUntil: {
+    type: Date,
+  },
   lastActive: {
     type: Date,
     default: Date.now

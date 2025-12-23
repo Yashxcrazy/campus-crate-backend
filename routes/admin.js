@@ -1,13 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
+const Item = require('../models/Item');
+const Review = require('../models/Review');
 const auth = require('../middleware/auth');
 const isAdmin = require('../middleware/isAdmin');
 
 // GET /api/admin/users
 router.get('/users', auth, isAdmin, async (req, res) => {
   try {
-    const users = await User.find({}, 'name email role createdAt').sort({ createdAt: -1 }).lean();
+    const users = await User.find({}, 'name email role createdAt isActive isBanned bannedUntil banReason lastActive').sort({ createdAt: -1 }).lean();
     res.json({ success: true, users });
   } catch (err) {
     console.error('GET /api/admin/users error:', err);
@@ -37,3 +39,148 @@ router.put('/users/:id/role', auth, isAdmin, async (req, res) => {
 });
 
 module.exports = router;
+
+// Deactivate a user (admin only)
+router.put('/users/:id/deactivate', auth, isAdmin, async (req, res) => {
+  try {
+    const target = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ success: false, error: 'User not found' });
+
+    if (target.role === 'admin') {
+      const adminCount = await User.countDocuments({ role: 'admin', isActive: true });
+      if (adminCount <= 1) {
+        return res.status(400).json({ success: false, error: 'Cannot deactivate the last active admin' });
+      }
+    }
+
+    target.isActive = false;
+    await target.save();
+    res.json({ success: true, user: { _id: target._id, name: target.name, email: target.email, role: target.role, isActive: target.isActive } });
+  } catch (err) {
+    console.error('PUT /admin/users/:id/deactivate error', err);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+// Ban a user (admin only)
+router.put('/users/:id/ban', auth, isAdmin, async (req, res) => {
+  try {
+    const { reason, until } = req.body || {};
+    const target = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ success: false, error: 'User not found' });
+
+    if (target.role === 'admin') {
+      const adminCount = await User.countDocuments({ role: 'admin', isActive: true });
+      if (adminCount <= 1) {
+        return res.status(400).json({ success: false, error: 'Cannot ban the last active admin' });
+      }
+    }
+
+    target.isBanned = true;
+    target.banReason = reason || 'Policy violation';
+    target.bannedUntil = until ? new Date(until) : null;
+    // Optionally also deactivate the account while banned
+    target.isActive = false;
+    await target.save();
+    res.json({ success: true, user: { _id: target._id, name: target.name, email: target.email, role: target.role, isActive: target.isActive, isBanned: target.isBanned, banReason: target.banReason, bannedUntil: target.bannedUntil } });
+  } catch (err) {
+    console.error('PUT /admin/users/:id/ban error', err);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+// Unban a user (admin only)
+router.put('/users/:id/unban', auth, isAdmin, async (req, res) => {
+  try {
+    const target = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ success: false, error: 'User not found' });
+
+    target.isBanned = false;
+    target.banReason = null;
+    target.bannedUntil = null;
+    // Optionally reactivate account after unban
+    target.isActive = true;
+    await target.save();
+    res.json({ success: true, user: { _id: target._id, name: target.name, email: target.email, role: target.role, isActive: target.isActive, isBanned: target.isBanned } });
+  } catch (err) {
+    console.error('PUT /admin/users/:id/unban error', err);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+// Delete a user (admin only)
+router.delete('/users/:id', auth, isAdmin, async (req, res) => {
+  try {
+    const target = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ success: false, error: 'User not found' });
+
+    if (target.role === 'admin') {
+      const adminCount = await User.countDocuments({ role: 'admin' });
+      if (adminCount <= 1) {
+        return res.status(400).json({ success: false, error: 'Cannot delete the last admin' });
+      }
+    }
+
+    // Deactivate user's items
+    await Item.updateMany({ owner: target._id }, { $set: { isActive: false } });
+
+    await target.deleteOne();
+    res.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /admin/users/:id error', err);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+// List all items (admin only)
+router.get('/items', auth, isAdmin, async (req, res) => {
+  try {
+    const { isActive, page = 1, limit = 20 } = req.query;
+    const query = {};
+    if (typeof isActive !== 'undefined') {
+      query.isActive = isActive === 'true';
+    }
+    const items = await Item.find(query)
+      .populate('owner', 'name email role')
+      .sort({ createdAt: -1 })
+      .limit(Number(limit))
+      .skip((Number(page) - 1) * Number(limit))
+      .lean();
+    const count = await Item.countDocuments(query);
+    res.json({ success: true, items, totalItems: count, totalPages: Math.ceil(count / Number(limit)) });
+  } catch (err) {
+    console.error('GET /admin/items error', err);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+// Deactivate an item (admin only)
+router.put('/items/:id/deactivate', auth, isAdmin, async (req, res) => {
+  try {
+    const item = await Item.findById(req.params.id);
+    if (!item) return res.status(404).json({ success: false, error: 'Item not found' });
+    item.isActive = false;
+    await item.save();
+    res.json({ success: true, item: { _id: item._id, title: item.title, isActive: item.isActive } });
+  } catch (err) {
+    console.error('PUT /admin/items/:id/deactivate error', err);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+// Delete a review (admin only)
+router.delete('/reviews/:id', auth, isAdmin, async (req, res) => {
+  try {
+    const review = await Review.findById(req.params.id);
+    if (!review) return res.status(404).json({ success: false, error: 'Review not found' });
+    const revieweeId = review.reviewee;
+    await review.deleteOne();
+    const reviews = await Review.find({ reviewee: revieweeId });
+    const avgRating = reviews.length ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length : 0;
+    await User.findByIdAndUpdate(revieweeId, { rating: avgRating, reviewCount: reviews.length });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /admin/reviews/:id error', err);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});

@@ -86,6 +86,19 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
+    if (!user.isActive) {
+      return res.status(403).json({ success: false, message: 'Account deactivated', code: 'ACCOUNT_DEACTIVATED' });
+    }
+
+    if (user.isBanned) {
+      const now = new Date();
+      const until = user.bannedUntil ? new Date(user.bannedUntil) : null;
+      const stillBanned = until ? until > now : true;
+      if (stillBanned) {
+        return res.status(403).json({ success: false, message: 'Account banned', code: 'ACCOUNT_BANNED', until: user.bannedUntil, reason: user.banReason });
+      }
+    }
+
     user.lastActive = Date.now();
     await user.save();
 
@@ -113,18 +126,46 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Get current user
-router.get('/me', (req, res) => {
+// Get current user (full doc sans password)
+router.get('/me', authenticateToken, async (req, res) => {
   try {
-    const auth = req.headers.authorization || '';
-    if (!auth.startsWith('Bearer ')) {
-      return res.status(200).json({ success: false, user: null });
+    const user = await User.findById(req.userId).select('-password');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
     }
-    const token = auth.split(' ')[1];
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    res.json({ success: true, user: payload });
+    res.json(user);
   } catch (err) {
-    return res.status(200).json({ success: false, user: null });
+    res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+});
+
+// Change password
+router.post('/change-password', authenticateToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'currentPassword and newPassword are required' });
+    }
+    if (typeof newPassword !== 'string' || newPassword.length < 8) {
+      return res.status(400).json({ message: 'New password must be at least 8 characters' });
+    }
+
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Current password is incorrect' });
+    }
+
+    user.password = newPassword; // hashed by pre-save hook
+    await user.save();
+
+    res.json({ message: 'Password updated successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 

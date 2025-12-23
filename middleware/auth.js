@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -12,7 +13,7 @@ const authenticateToken = (req, res, next) => {
     });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+  jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
     if (err) {
       return res.status(401).json({ 
         success: false,
@@ -21,9 +22,24 @@ const authenticateToken = (req, res, next) => {
         error: err.message
       });
     }
-    req.userId = decoded.userId;
-    req.user = decoded;
-    next();
+
+    try {
+      const user = await User.findById(decoded.userId).select('isActive isBanned bannedUntil banReason role');
+      if (!user) {
+        return res.status(401).json({ success: false, message: 'User not found', code: 'NO_USER' });
+      }
+      if (!user.isActive) {
+        return res.status(403).json({ success: false, message: 'Account deactivated', code: 'ACCOUNT_DEACTIVATED' });
+      }
+      if (user.isBanned) {
+        return res.status(403).json({ success: false, message: 'Account banned', code: 'ACCOUNT_BANNED', until: user.bannedUntil, reason: user.banReason });
+      }
+      req.userId = decoded.userId;
+      req.user = decoded;
+      next();
+    } catch (e) {
+      return res.status(500).json({ success: false, message: 'Auth check failed', code: 'AUTH_ERROR' });
+    }
   });
 };
 
