@@ -280,6 +280,16 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     
     console.log('DELETE request for item:', itemId, 'by user:', req.userId);
     
+    // Guard missing or undefined IDs coming from the client
+    if (!itemId) {
+      console.warn('Missing itemId in delete request');
+      return res.status(400).json({
+        success: false,
+        message: 'Item ID is required in the URL',
+        itemId
+      });
+    }
+
     // Validate if ID is a valid MongoDB ObjectId
     if (!itemId.match(/^[0-9a-fA-F]{24}$/)) {
       console.warn('Invalid ObjectId format:', itemId);
