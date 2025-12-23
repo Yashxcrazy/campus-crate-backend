@@ -86,6 +86,11 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
+    if (!user.role) {
+      user.role = 'user';
+      await user.save({ validateModifiedOnly: true });
+    }
+
     if (!user.isActive) {
       return res.status(403).json({ success: false, message: 'Account deactivated', code: 'ACCOUNT_DEACTIVATED' });
     }
@@ -118,7 +123,14 @@ router.post('/login', async (req, res) => {
         profileImage: user.profileImage,
         rating: user.rating,
         isVerified: user.isVerified,
-        role: user.role
+        role: user.role,
+        reviewCount: user.reviewCount,
+        createdAt: user.createdAt,
+        isActive: user.isActive,
+        isBanned: user.isBanned,
+        bannedUntil: user.bannedUntil,
+        banReason: user.banReason,
+        lastActive: user.lastActive
       }
     });
   } catch (error) {
@@ -132,6 +144,10 @@ router.get('/me', authenticateToken, async (req, res) => {
     const user = await User.findById(req.userId).select('-password');
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    if (!user.role) {
+      user.role = 'user';
+      await user.save({ validateModifiedOnly: true });
     }
     res.json(user);
   } catch (err) {
