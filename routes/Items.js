@@ -201,52 +201,41 @@ router.put('/:id', authenticateToken, async (req, res) => {
       });
     }
 
-    // Validate and apply updates
-    const updates = req.body;
-    if (!updates || Object.keys(updates).length === 0) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'No updates provided',
-        itemId 
-      });
-    }
+    const updates = req.body || {};
 
-    // List of immutable fields that cannot be updated
-    const immutableFields = ['_id', 'owner', 'createdAt'];
-    
-    // Apply updates (skip immutable fields)
+    // Drop immutable fields
+    const immutableFields = ['_id', 'owner', 'createdAt', 'updatedAt', 'isActive'];
+    const set = {};
     Object.keys(updates).forEach(key => {
       if (!immutableFields.includes(key)) {
-        item[key] = updates[key];
+        set[key] = updates[key];
       }
     });
 
-    // Save the updated item
-    const savedItem = await item.save();
-    
-    if (!savedItem) {
-      console.error('Update failed - save returned null for item:', itemId);
-      return res.status(500).json({ 
+    if (Object.keys(set).length === 0) {
+      return res.status(400).json({ 
         success: false,
-        message: 'Failed to save item updates to database',
+        message: 'No valid updates provided',
         itemId 
       });
     }
 
-    // Refetch with populated owner to ensure complete data
-    const updatedItem = await Item.findById(itemId)
-      .populate('owner', 'name profileImage rating reviewCount campus phone email');
+    // Atomic update with validation and owner guard
+    const updatedItem = await Item.findOneAndUpdate(
+      { _id: itemId, owner: req.userId, isActive: true },
+      { $set: set },
+      { new: true, runValidators: true }
+    ).populate('owner', 'name profileImage rating reviewCount campus phone email');
 
     if (!updatedItem) {
-      console.error('Update verification failed - cannot refetch item:', itemId);
-      return res.status(500).json({ 
+      console.error('Update failed - no document returned for item:', itemId);
+      return res.status(404).json({ 
         success: false,
-        message: 'Item updated but verification failed',
+        message: 'Item not found or not owned by user',
         itemId 
       });
     }
 
-    // Return the updated document
     res.status(200).json({
       success: true,
       message: 'Item updated successfully',
@@ -335,48 +324,20 @@ router.delete('/:id', authenticateToken, async (req, res) => {
       });
     }
 
-    // Perform soft delete using findByIdAndUpdate for reliability
-    console.log('Performing soft delete for item:', itemId);
-    const deletedItem = await Item.findByIdAndUpdate(
-      itemId,
-      { isActive: false },
-      { new: true, runValidators: false }
-    );
-    
-    console.log('Delete result - isActive:', deletedItem?.isActive);
-    
-    if (!deletedItem) {
-      console.error('Delete returned null for item:', itemId);
-      return res.status(500).json({ 
+    // Hard delete (remove document) to ensure it no longer exists in DB
+    console.log('Performing hard delete for item:', itemId);
+    const deleteResult = await Item.deleteOne({ _id: itemId, owner: req.userId });
+
+    if (!deleteResult || deleteResult.deletedCount === 0) {
+      console.error('Delete failed - document not removed for item:', itemId);
+      return res.status(404).json({ 
         success: false,
-        message: 'Failed to delete item - update returned null',
+        message: 'Item not found or not owned by user',
         itemId 
       });
     }
 
-    if (deletedItem.isActive !== false) {
-      console.error('Delete failed - isActive is still true for item:', itemId);
-      return res.status(500).json({ 
-        success: false,
-        message: 'Failed to delete item - isActive flag not updated',
-        itemId 
-      });
-    }
-
-    // Final verification
-    const verify = await Item.findById(itemId);
-    console.log('Verification - item isActive:', verify?.isActive);
-    
-    if (verify && verify.isActive !== false) {
-      console.error('Verification failed - item still active:', itemId);
-      return res.status(500).json({ 
-        success: false,
-        message: 'Delete verification failed - item still active',
-        itemId 
-      });
-    }
-
-    console.log('✅ Item successfully deleted:', itemId);
+    console.log('✅ Item successfully hard-deleted:', itemId);
     
     // Return successful response
     res.status(200).json({ 
