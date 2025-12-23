@@ -68,7 +68,24 @@ app.use('/api/', limiter);
 // MongoDB Connection - starts in degraded mode if URI missing
 console.log('Connecting to MongoDB...');
 
-let mongoConnected = false;
+let mongoReady = false;
+
+// Keep readiness in sync with actual connection state
+mongoose.connection.on('connected', () => {
+  mongoReady = true;
+  console.log('✅ MongoDB connected successfully');
+  console.log(`📊 Database: ${mongoose.connection.name}`);
+});
+
+mongoose.connection.on('disconnected', () => {
+  mongoReady = false;
+  console.warn('⚠️ MongoDB disconnected');
+});
+
+mongoose.connection.on('error', (err) => {
+  mongoReady = false;
+  console.error('❌ MongoDB connection error:', err.message);
+});
 
 if (!process.env.MONGODB_URI) {
   console.warn('⚠️ WARNING: MONGODB_URI not set in environment variables!');
@@ -79,22 +96,16 @@ if (!process.env.MONGODB_URI) {
     // Connection options for better reliability
     serverSelectionTimeoutMS: 5000,
     socketTimeoutMS: 45000,
-  })
-    .then(() => {
-      mongoConnected = true;
-      console.log('✅ MongoDB connected successfully');
-      console.log(`📊 Database: ${mongoose.connection.name}`);
-    })
-    .catch(err => {
-      console.error('❌ MongoDB connection error:', err.message);
-      console.warn('⚠️ Server starting in DEGRADED MODE - database features unavailable');
-      console.warn('ℹ️  Non-database endpoints (health check, etc.) will still work');
-    });
+  }).catch(err => {
+    // Error already logged by event listener; keep degraded but running
+    console.warn('⚠️ Server starting in DEGRADED MODE - database features unavailable');
+    console.warn('ℹ️  Non-database endpoints (health check, etc.) will still work');
+  });
 }
 
 // Add middleware to check DB connection for API routes
 app.use('/api/', (req, res, next) => {
-  if (!mongoConnected && !process.env.MONGODB_URI) {
+  if (!process.env.MONGODB_URI) {
     console.warn(`⚠️ Blocked ${req.method} ${req.path} - MongoDB not configured`);
     return res.status(503).json({
       error: 'Service Unavailable',
@@ -102,6 +113,16 @@ app.use('/api/', (req, res, next) => {
       status: 503
     });
   }
+
+  if (!mongoReady) {
+    console.warn(`⚠️ Blocked ${req.method} ${req.path} - MongoDB not connected`);
+    return res.status(503).json({
+      error: 'Service Unavailable',
+      message: 'Database connection unavailable. Please try again shortly.',
+      status: 503
+    });
+  }
+
   next();
 });
 
