@@ -136,6 +136,7 @@ const uploadRoutes = require('./routes/Upload');
 const userRoutes = require('./routes/Users');
 const reviewRoutes = require('./routes/Reviews');
 const adminRoutes = require('./routes/admin');
+const reportRoutes = require('./routes/reports');
 
 // Use Routes
 app.use('/api/auth', authRoutes);
@@ -146,6 +147,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

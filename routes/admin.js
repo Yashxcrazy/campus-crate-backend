@@ -3,9 +3,35 @@ const router = express.Router();
 const User = require('../models/User');
 const Item = require('../models/Item');
 const Review = require('../models/Review');
+const Report = require('../models/Report');
+const LendingRequest = require('../models/LendingRequest');
 const auth = require('../middleware/auth');
 const isAdmin = require('../middleware/isAdmin');
 const isManager = require('../middleware/isManager');
+
+// GET /api/admin/stats
+router.get('/stats', auth, isAdmin, async (req, res) => {
+  try {
+    const [totalUsers, totalListings, totalBookings, reportedItems] = await Promise.all([
+      User.countDocuments(),
+      Item.countDocuments({ isActive: true }),
+      LendingRequest.countDocuments(),
+      Report.countDocuments({ status: 'Pending' })
+    ]);
+    res.json({
+      success: true,
+      stats: {
+        totalUsers,
+        totalListings,
+        totalBookings,
+        reportedItems
+      }
+    });
+  } catch (err) {
+    console.error('GET /api/admin/stats error:', err);
+    res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
 
 // GET /api/admin/users
 router.get('/users', auth, isAdmin, async (req, res) => {
@@ -259,6 +285,63 @@ router.delete('/reviews/:id', auth, isAdmin, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('DELETE /admin/reviews/:id error', err);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+// GET /api/admin/reports
+router.get('/reports', auth, isAdmin, async (req, res) => {
+  try {
+    const { status, page = 1, limit = 20 } = req.query;
+    const query = {};
+    if (status) query.status = status;
+    const reports = await Report.find(query)
+      .populate('reporter', 'name email')
+      .populate('reportedItem', 'title')
+      .populate('reportedUser', 'name email')
+      .populate('resolvedBy', 'name')
+      .sort({ createdAt: -1 })
+      .limit(Number(limit))
+      .skip((Number(page) - 1) * Number(limit))
+      .lean();
+    const count = await Report.countDocuments(query);
+    res.json({ success: true, reports, totalReports: count, totalPages: Math.ceil(count / Number(limit)) });
+  } catch (err) {
+    console.error('GET /admin/reports error', err);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+// PUT /api/admin/reports/:id/resolve
+router.put('/reports/:id/resolve', auth, isAdmin, async (req, res) => {
+  try {
+    const { status, adminNotes } = req.body || {};
+    if (!['Resolved', 'Dismissed'].includes(status)) {
+      return res.status(400).json({ success: false, error: 'Invalid status' });
+    }
+    const report = await Report.findById(req.params.id);
+    if (!report) return res.status(404).json({ success: false, error: 'Report not found' });
+    report.status = status;
+    report.adminNotes = adminNotes || '';
+    report.resolvedBy = req.userId;
+    report.resolvedAt = new Date();
+    await report.save();
+    res.json({ success: true, report });
+  } catch (err) {
+    console.error('PUT /admin/reports/:id/resolve error', err);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+// DELETE /api/admin/reports/:id
+router.delete('/reports/:id', auth, isAdmin, async (req, res) => {
+  try {
+    const report = await Report.findById(req.params.id);
+    if (!report) return res.status(404).json({ success: false, error: 'Report not found' });
+    await report.deleteOne();
+    res.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /admin/reports/:id error', err);
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
