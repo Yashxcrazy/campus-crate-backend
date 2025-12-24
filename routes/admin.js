@@ -5,11 +5,12 @@ const Item = require('../models/Item');
 const Review = require('../models/Review');
 const auth = require('../middleware/auth');
 const isAdmin = require('../middleware/isAdmin');
+const isManager = require('../middleware/isManager');
 
 // GET /api/admin/users
 router.get('/users', auth, isAdmin, async (req, res) => {
   try {
-    const users = await User.find({}, 'name email role createdAt isActive isBanned bannedUntil banReason lastActive').sort({ createdAt: -1 }).lean();
+    const users = await User.find({}, 'name email role createdAt isActive isBanned bannedUntil banReason lastActive isVerified').sort({ createdAt: -1 }).lean();
     res.json({ success: true, users });
   } catch (err) {
     console.error('GET /api/admin/users error:', err);
@@ -18,10 +19,21 @@ router.get('/users', auth, isAdmin, async (req, res) => {
 });
 
 // PUT /api/admin/users/:id/role
-router.put('/users/:id/role', auth, isAdmin, async (req, res) => {
+router.put('/users/:id/role', auth, isManager, async (req, res) => {
   try {
     const { role } = req.body;
-    if (!['user', 'admin'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+    if (!['user', 'admin', 'manager'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+
+    // Prevent removing the last manager
+    if (role !== 'manager') {
+      const target = await User.findById(req.params.id);
+      if (target && target.role === 'manager') {
+        const managerCount = await User.countDocuments({ role: 'manager' });
+        if (managerCount <= 1) {
+          return res.status(400).json({ error: 'Cannot demote the last manager' });
+        }
+      }
+    }
 
     const user = await User.findByIdAndUpdate(
       req.params.id,
@@ -38,13 +50,60 @@ router.put('/users/:id/role', auth, isAdmin, async (req, res) => {
   }
 });
 
-module.exports = router;
+// PUT /api/admin/users/:id/verify
+router.put('/users/:id/verify', auth, isAdmin, async (req, res) => {
+  try {
+    const target = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ success: false, error: 'User not found' });
+
+    // Only managers may verify admins/managers
+    if (req.user.role === 'admin' && (target.role === 'admin' || target.role === 'manager')) {
+      return res.status(403).json({ success: false, error: 'Admins cannot verify admins/managers' });
+    }
+
+    target.isVerified = true;
+    await target.save();
+    res.json({ success: true, user: { _id: target._id, isVerified: target.isVerified } });
+  } catch (err) {
+    console.error('PUT /admin/users/:id/verify error', err);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+// PUT /api/admin/users/:id/reset-password
+router.put('/users/:id/reset-password', auth, isAdmin, async (req, res) => {
+  try {
+    const { newPassword } = req.body || {};
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
+      return res.status(400).json({ success: false, error: 'New password must be at least 8 characters' });
+    }
+
+    const target = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ success: false, error: 'User not found' });
+
+    // Only managers may reset passwords for admins/managers
+    if (req.user.role === 'admin' && (target.role === 'admin' || target.role === 'manager')) {
+      return res.status(403).json({ success: false, error: 'Admins cannot reset passwords for admins/managers' });
+    }
+
+    target.password = newPassword; // hashed by pre-save hook
+    await target.save();
+    res.json({ success: true, message: 'Password reset successfully' });
+  } catch (err) {
+    console.error('PUT /admin/users/:id/reset-password error', err);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
 
 // Deactivate a user (admin only)
 router.put('/users/:id/deactivate', auth, isAdmin, async (req, res) => {
   try {
     const target = await User.findById(req.params.id);
     if (!target) return res.status(404).json({ success: false, error: 'User not found' });
+
+    if (req.user.role === 'admin' && (target.role === 'admin' || target.role === 'manager')) {
+      return res.status(403).json({ success: false, error: 'Admins cannot deactivate admins/managers' });
+    }
 
     if (target.role === 'admin') {
       const adminCount = await User.countDocuments({ role: 'admin', isActive: true });
@@ -68,6 +127,10 @@ router.put('/users/:id/ban', auth, isAdmin, async (req, res) => {
     const { reason, until } = req.body || {};
     const target = await User.findById(req.params.id);
     if (!target) return res.status(404).json({ success: false, error: 'User not found' });
+
+    if (req.user.role === 'admin' && (target.role === 'admin' || target.role === 'manager')) {
+      return res.status(403).json({ success: false, error: 'Admins cannot ban admins/managers' });
+    }
 
     if (target.role === 'admin') {
       const adminCount = await User.countDocuments({ role: 'admin', isActive: true });
@@ -95,6 +158,10 @@ router.put('/users/:id/unban', auth, isAdmin, async (req, res) => {
     const target = await User.findById(req.params.id);
     if (!target) return res.status(404).json({ success: false, error: 'User not found' });
 
+    if (req.user.role === 'admin' && (target.role === 'admin' || target.role === 'manager')) {
+      return res.status(403).json({ success: false, error: 'Admins cannot unban admins/managers' });
+    }
+
     target.isBanned = false;
     target.banReason = null;
     target.bannedUntil = null;
@@ -114,10 +181,21 @@ router.delete('/users/:id', auth, isAdmin, async (req, res) => {
     const target = await User.findById(req.params.id);
     if (!target) return res.status(404).json({ success: false, error: 'User not found' });
 
+    if (req.user.role === 'admin' && (target.role === 'admin' || target.role === 'manager')) {
+      return res.status(403).json({ success: false, error: 'Admins cannot delete admins/managers' });
+    }
+
     if (target.role === 'admin') {
       const adminCount = await User.countDocuments({ role: 'admin' });
       if (adminCount <= 1) {
         return res.status(400).json({ success: false, error: 'Cannot delete the last admin' });
+      }
+    }
+
+    if (target.role === 'manager') {
+      const managerCount = await User.countDocuments({ role: 'manager' });
+      if (managerCount <= 1) {
+        return res.status(400).json({ success: false, error: 'Cannot delete the last manager' });
       }
     }
 
@@ -184,3 +262,5 @@ router.delete('/reviews/:id', auth, isAdmin, async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
+
+module.exports = router;

@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const Review = require('../models/Review');
+const Item = require('../models/Item');
+const LendingRequest = require('../models/LendingRequest');
+const Notification = require('../models/Notification');
 const authenticateToken = require('../middleware/auth');
 const { upload, uploadToCloudinary } = require('../utils/cloudinary');
 
@@ -117,17 +120,34 @@ router.put('/preferences', authenticateToken, async (req, res) => {
   }
 });
 
-// Delete account (soft delete)
-router.delete('/me', authenticateToken, async (req, res) => {
+// Delete account (hard delete with password verification)
+router.post('/me/delete', authenticateToken, async (req, res) => {
   try {
+    const { password } = req.body || {};
+    if (!password) {
+      return res.status(400).json({ success: false, message: 'Password is required to delete account' });
+    }
+
     const user = await User.findById(req.userId);
-    if (!user) return res.status(404).json({ message: 'User not found' });
-    user.isActive = false;
-    user.phone = undefined;
-    user.profileImage = undefined;
-    await user.save();
-    res.json({ message: 'Account deactivated' });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: 'Incorrect password' });
+    }
+
+    // Cascade delete related data
+    await Promise.all([
+      Item.deleteMany({ owner: user._id }),
+      LendingRequest.deleteMany({ $or: [{ borrower: user._id }, { lender: user._id }] }),
+      Review.deleteMany({ $or: [{ reviewer: user._id }, { reviewee: user._id }] }),
+      Notification.deleteMany({ user: user._id }),
+    ]);
+
+    await user.deleteOne();
+
+    res.json({ success: true, message: 'Account deleted' });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 });

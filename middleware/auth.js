@@ -35,7 +35,7 @@ const authenticateToken = (req, res, next) => {
         return res.status(403).json({ success: false, message: 'Account banned', code: 'ACCOUNT_BANNED', until: user.bannedUntil, reason: user.banReason });
       }
       req.userId = decoded.userId;
-      req.user = decoded;
+      req.user = { ...decoded, role: user.role };
       next();
     } catch (e) {
       return res.status(500).json({ success: false, message: 'Auth check failed', code: 'AUTH_ERROR' });
