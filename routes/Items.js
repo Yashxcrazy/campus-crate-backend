@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Item = require('../models/Item');
+const LendingRequest = require('../models/LendingRequest');
 const authenticateToken = require('../middleware/auth');
 
 // Get all items with filters
@@ -63,8 +64,25 @@ router.get('/', async (req, res) => {
 
     const count = await Item.countDocuments(query);
 
+    let responseItems = items;
+    if (req.query.includeBookingCount === 'true') {
+      const activeStatuses = ['Pending', 'Accepted', 'Active'];
+      const withCounts = await Promise.all(
+        items.map(async (itemDoc) => {
+          const bookingCount = await LendingRequest.countDocuments({
+            item: itemDoc._id,
+            status: { $in: activeStatuses }
+          });
+          const obj = itemDoc.toObject();
+          obj.bookingCount = bookingCount;
+          return obj;
+        })
+      );
+      responseItems = withCounts;
+    }
+
     res.json({
-      items,
+      items: responseItems,
       totalPages: Math.ceil(count / limit),
       currentPage: page,
       totalItems: count
