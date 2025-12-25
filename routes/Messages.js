@@ -4,6 +4,18 @@ const Message = require('../models/Message');
 const LendingRequest = require('../models/LendingRequest');
 const authenticateToken = require('../middleware/auth');
 
+// Verification guard middleware
+const requireVerified = (req, res, next) => {
+  if (!req.user?.isVerified) {
+    return res.status(403).json({ 
+      success: false, 
+      message: 'Email verification required to chat',
+      code: 'NOT_VERIFIED'
+    });
+  }
+  next();
+};
+
 // Get unread message count - MUST COME BEFORE /lending/:lendingId
 router.get('/unread/count', authenticateToken, async (req, res) => {
   try {
@@ -31,7 +43,7 @@ router.get('/unread/count', authenticateToken, async (req, res) => {
 });
 
 // Get messages for a lending request
-router.get('/lending/:lendingId', authenticateToken, async (req, res) => {
+router.get('/lending/:lendingId', authenticateToken, requireVerified, async (req, res) => {
   try {
     const lendingRequest = await LendingRequest.findById(req.params.lendingId);
     
@@ -71,7 +83,7 @@ router.get('/lending/:lendingId', authenticateToken, async (req, res) => {
 });
 
 // Send message
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, requireVerified, async (req, res) => {
   try {
     const { lendingRequestId, content } = req.body;
     

@@ -110,7 +110,7 @@ router.get('/user/my-items', authenticateToken, async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const item = await Item.findById(req.params.id)
-      .populate('owner', 'name profileImage rating reviewCount campus phone email');
+      .populate('owner', 'name profileImage rating reviewCount campus phone email createdAt isVerified');
 
     if (!item || !item.isActive) {
       return res.status(404).json({ message: 'Item not found' });

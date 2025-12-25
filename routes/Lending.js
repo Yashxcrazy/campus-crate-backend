@@ -11,8 +11,20 @@ const {
 } = require('../utils/slack');
 const User = require('../models/User');
 
+// Verification guard middleware
+const requireVerified = (req, res, next) => {
+  if (!req.user?.isVerified) {
+    return res.status(403).json({ 
+      success: false, 
+      message: 'Email verification required to borrow, lend, or chat',
+      code: 'NOT_VERIFIED'
+    });
+  }
+  next();
+};
+
 // Create lending request
-router.post('/request', authenticateToken, async (req, res) => {
+router.post('/request', authenticateToken, requireVerified, async (req, res) => {
   try {
     const { itemId, startDate, endDate, message } = req.body;
 
@@ -149,7 +161,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 });
 
 // Accept lending request
-router.post('/:id/accept', authenticateToken, async (req, res) => {
+router.post('/:id/accept', authenticateToken, requireVerified, async (req, res) => {
   try {
     const request = await LendingRequest.findById(req.params.id)
       .populate('item')
@@ -201,7 +213,7 @@ router.post('/:id/accept', authenticateToken, async (req, res) => {
 });
 
 // Reject lending request
-router.post('/:id/reject', authenticateToken, async (req, res) => {
+router.post('/:id/reject', authenticateToken, requireVerified, async (req, res) => {
   try {
     const { reason } = req.body;
     const request = await LendingRequest.findById(req.params.id)
@@ -239,7 +251,7 @@ router.post('/:id/reject', authenticateToken, async (req, res) => {
 });
 
 // Complete lending
-router.post('/:id/complete', authenticateToken, async (req, res) => {
+router.post('/:id/complete', authenticateToken, requireVerified, async (req, res) => {
   try {
     const request = await LendingRequest.findById(req.params.id)
       .populate('item');

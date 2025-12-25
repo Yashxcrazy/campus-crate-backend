@@ -137,6 +137,10 @@ const userRoutes = require('./routes/Users');
 const reviewRoutes = require('./routes/Reviews');
 const adminRoutes = require('./routes/admin');
 const reportRoutes = require('./routes/reports');
+const verificationRoutes = require('./routes/verificationRequests');
+
+// Middleware for authentication
+const auth = require('./middleware/auth');
 
 // Use Routes
 app.use('/api/auth', authRoutes);
@@ -148,6 +152,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/verification-requests', auth, verificationRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

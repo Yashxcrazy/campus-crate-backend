@@ -8,7 +8,7 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['LendingRequest', 'RequestAccepted', 'RequestRejected', 'ReturnReminder', 'LateReturn', 'Review', 'Message', 'System'],
+    enum: ['LendingRequest', 'RequestAccepted', 'RequestRejected', 'ReturnReminder', 'LateReturn', 'Review', 'Message', 'System', 'Verification', 'VerificationMessage'],
     required: true
   },
   title: {

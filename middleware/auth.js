@@ -24,7 +24,7 @@ const authenticateToken = (req, res, next) => {
     }
 
     try {
-      const user = await User.findById(decoded.userId).select('isActive isBanned bannedUntil banReason role');
+      const user = await User.findById(decoded.userId).select('isActive isBanned bannedUntil banReason role isVerified');
       if (!user) {
         return res.status(401).json({ success: false, message: 'User not found', code: 'NO_USER' });
       }
@@ -35,7 +35,7 @@ const authenticateToken = (req, res, next) => {
         return res.status(403).json({ success: false, message: 'Account banned', code: 'ACCOUNT_BANNED', until: user.bannedUntil, reason: user.banReason });
       }
       req.userId = decoded.userId;
-      req.user = { ...decoded, role: user.role };
+      req.user = { ...decoded, role: user.role, isVerified: user.isVerified };
       next();
     } catch (e) {
       return res.status(500).json({ success: false, message: 'Auth check failed', code: 'AUTH_ERROR' });
