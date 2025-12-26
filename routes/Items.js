@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Item = require('../models/Item');
 const LendingRequest = require('../models/LendingRequest');
+const Message = require('../models/Message');
 const authenticateToken = require('../middleware/auth');
 
 // Get all items with filters
@@ -400,5 +401,87 @@ router.get('/user/:userId', async (req, res) => {
   }
 });
 
+// Get messages for an item (between current user and item owner)
+router.get('/:id/messages', authenticateToken, async (req, res) => {
+  try {
+    const item = await Item.findById(req.params.id).populate('owner', 'name');
+    
+    if (!item) {
+      return res.status(404).json({ message: 'Item not found' });
+    }
+
+    const messages = await Message.find({
+      itemId: req.params.id,
+      $or: [
+        { senderId: req.userId, recipientId: item.owner._id },
+        { senderId: item.owner._id, recipientId: req.userId }
+      ]
+    })
+    .populate('senderId', 'name')
+    .sort({ createdAt: 1 });
+
+    const formattedMessages = messages.map(msg => ({
+      id: msg._id,
+      content: msg.content,
+      senderId: msg.senderId._id,
+      senderName: msg.senderId.name,
+      createdAt: msg.createdAt,
+      isOwnMessage: msg.senderId._id.toString() === req.userId
+    }));
+
+    res.json({ messages: formattedMessages });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Send a message about an item
+router.post('/:id/messages', authenticateToken, async (req, res) => {
+  try {
+    const { content } = req.body;
+    
+    if (!content || !content.trim()) {
+      return res.status(400).json({ message: 'Message content is required' });
+    }
+
+    const item = await Item.findById(req.params.id).populate('owner');
+    
+    if (!item) {
+      return res.status(404).json({ message: 'Item not found' });
+    }
+
+    // Determine recipient (if sender is owner, can't message themselves)
+    const recipientId = item.owner._id.toString() === req.userId 
+      ? null // Owner can't message themselves
+      : item.owner._id;
+
+    if (!recipientId) {
+      return res.status(400).json({ message: 'Cannot message yourself about your own item' });
+    }
+
+    const message = new Message({
+      itemId: req.params.id,
+      senderId: req.userId,
+      recipientId: recipientId,
+      content: content.trim()
+    });
+
+    await message.save();
+    await message.populate('senderId', 'name');
+
+    res.json({
+      message: {
+        id: message._id,
+        content: message.content,
+        senderId: message.senderId._id,
+        senderName: message.senderId.name,
+        createdAt: message.createdAt,
+        isOwnMessage: true
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
 
 module.exports = router;
