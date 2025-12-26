@@ -413,20 +413,20 @@ router.get('/:id/messages', authenticateToken, async (req, res) => {
     const messages = await Message.find({
       itemId: req.params.id,
       $or: [
-        { senderId: req.userId, recipientId: item.owner._id },
-        { senderId: item.owner._id, recipientId: req.userId }
+        { sender: req.userId, recipientId: item.owner._id },
+        { sender: item.owner._id, recipientId: req.userId }
       ]
     })
-    .populate('senderId', 'name')
+    .populate('sender', 'name')
     .sort({ createdAt: 1 });
 
     const formattedMessages = messages.map(msg => ({
       id: msg._id,
       content: msg.content,
-      senderId: msg.senderId._id,
-      senderName: msg.senderId.name,
+      senderId: msg.sender._id,
+      senderName: msg.sender.name,
       createdAt: msg.createdAt,
-      isOwnMessage: msg.senderId._id.toString() === req.userId
+      isOwnMessage: msg.sender._id.toString() === req.userId
     }));
 
     res.json({ messages: formattedMessages });
@@ -461,20 +461,20 @@ router.post('/:id/messages', authenticateToken, async (req, res) => {
 
     const message = new Message({
       itemId: req.params.id,
-      senderId: req.userId,
+      sender: req.userId,
       recipientId: recipientId,
       content: content.trim()
     });
 
     await message.save();
-    await message.populate('senderId', 'name');
+    await message.populate('sender', 'name');
 
     res.json({
       message: {
         id: message._id,
         content: message.content,
-        senderId: message.senderId._id,
-        senderName: message.senderId.name,
+        senderId: message.sender._id,
+        senderName: message.sender.name,
         createdAt: message.createdAt,
         isOwnMessage: true
       }
