@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Message = require('../models/Message');
 const LendingRequest = require('../models/LendingRequest');
 const authenticateToken = require('../middleware/auth');
@@ -38,6 +39,118 @@ router.get('/unread/count', authenticateToken, async (req, res) => {
     
     res.json({ unreadCount: count });
   } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Get all conversations (inquiries and active rentals)
+router.get('/conversations', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    // 1. Get Active Rentals (LendingRequests)
+    const rentals = await LendingRequest.find({
+      $or: [{ borrower: userId }, { lender: userId }]
+    })
+    .populate('item', 'title images')
+    .populate('borrower', 'name profileImage')
+    .populate('lender', 'name profileImage')
+    .sort({ updatedAt: -1 });
+
+    const rentalConversations = await Promise.all(rentals.map(async (rental) => {
+      const lastMessage = await Message.findOne({ lendingRequest: rental._id })
+        .sort({ createdAt: -1 });
+      
+      const otherUser = rental.borrower._id.toString() === userId ? rental.lender : rental.borrower;
+      
+      return {
+        id: rental._id,
+        type: 'rental',
+        otherUser: {
+          _id: otherUser._id,
+          name: otherUser.name,
+          profileImage: otherUser.profileImage
+        },
+        item: rental.item,
+        lastMessage: lastMessage ? {
+          content: lastMessage.content,
+          createdAt: lastMessage.createdAt,
+          isRead: lastMessage.isRead,
+          senderId: lastMessage.sender
+        } : null,
+        updatedAt: lastMessage ? lastMessage.createdAt : rental.updatedAt
+      };
+    }));
+
+    // 2. Get Item Inquiries (Messages with itemId but no lendingRequest)
+    // We need to aggregate to group by (itemId + otherUser)
+    const inquiries = await Message.aggregate([
+      {
+        $match: {
+          $or: [
+            { sender: new mongoose.Types.ObjectId(userId) },
+            { recipientId: new mongoose.Types.ObjectId(userId) }
+          ],
+          itemId: { $exists: true },
+          lendingRequest: { $exists: false }
+        }
+      },
+      {
+        $sort: { createdAt: -1 }
+      },
+      {
+        $group: {
+          _id: {
+            itemId: "$itemId",
+            otherUser: {
+              $cond: {
+                if: { $eq: ["$sender", new mongoose.Types.ObjectId(userId)] },
+                then: "$recipientId",
+                else: "$sender"
+              }
+            }
+          },
+          lastMessage: { $first: "$$ROOT" }
+        }
+      }
+    ]);
+
+    // Populate inquiry details
+    const inquiryConversations = await Promise.all(inquiries.map(async (inq) => {
+      const item = await mongoose.model('Item').findById(inq._id.itemId).select('title images owner');
+      const otherUser = await mongoose.model('User').findById(inq._id.otherUser).select('name profileImage');
+      
+      if (!item || !otherUser) return null;
+
+      return {
+        id: item._id, // For inquiries, we use itemId as ID, but we need to handle the user param in frontend
+        conversationId: `${item._id}-${otherUser._id}`, // Unique ID for frontend key
+        type: 'inquiry',
+        otherUser: {
+          _id: otherUser._id,
+          name: otherUser.name,
+          profileImage: otherUser.profileImage
+        },
+        item: item,
+        lastMessage: {
+          content: inq.lastMessage.content,
+          createdAt: inq.lastMessage.createdAt,
+          isRead: inq.lastMessage.isRead,
+          senderId: inq.lastMessage.sender
+        },
+        updatedAt: inq.lastMessage.createdAt
+      };
+    }));
+
+    // Combine and sort
+    const allConversations = [...rentalConversations, ...inquiryConversations]
+      .filter(c => c !== null)
+      .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+
+    res.json(allConversations);
+
+  } catch (error) {
+    console.error('Error fetching conversations:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

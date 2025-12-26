@@ -401,7 +401,7 @@ router.get('/user/:userId', async (req, res) => {
   }
 });
 
-// Get messages for an item (between current user and item owner)
+// Get messages for an item
 router.get('/:id/messages', authenticateToken, async (req, res) => {
   try {
     const item = await Item.findById(req.params.id).populate('owner', 'name');
@@ -410,11 +410,27 @@ router.get('/:id/messages', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Item not found' });
     }
 
+    const isOwner = item.owner._id.toString() === req.userId;
+    let otherUserId;
+
+    if (isOwner) {
+      // If owner is viewing, they need to specify who they are chatting with
+      otherUserId = req.query.userId;
+      if (!otherUserId) {
+        // If no user specified, maybe return list of people who messaged? 
+        // For now, let's require it, or handle it in the conversations endpoint
+        return res.status(400).json({ message: 'UserId required for owner view' });
+      }
+    } else {
+      // If borrower is viewing, they are chatting with the owner
+      otherUserId = item.owner._id;
+    }
+
     const messages = await Message.find({
       itemId: req.params.id,
       $or: [
-        { sender: req.userId, recipientId: item.owner._id },
-        { sender: item.owner._id, recipientId: req.userId }
+        { sender: req.userId, recipientId: otherUserId },
+        { sender: otherUserId, recipientId: req.userId }
       ]
     })
     .populate('sender', 'name')
@@ -438,7 +454,7 @@ router.get('/:id/messages', authenticateToken, async (req, res) => {
 // Send a message about an item
 router.post('/:id/messages', authenticateToken, async (req, res) => {
   try {
-    const { content } = req.body;
+    const { content, recipientId: bodyRecipientId } = req.body;
     
     if (!content || !content.trim()) {
       return res.status(400).json({ message: 'Message content is required' });
@@ -450,13 +466,22 @@ router.post('/:id/messages', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Item not found' });
     }
 
-    // Determine recipient (if sender is owner, can't message themselves)
-    const recipientId = item.owner._id.toString() === req.userId 
-      ? null // Owner can't message themselves
-      : item.owner._id;
+    const isOwner = item.owner._id.toString() === req.userId;
+    let recipientId;
 
-    if (!recipientId) {
-      return res.status(400).json({ message: 'Cannot message yourself about your own item' });
+    if (isOwner) {
+      // If owner is sending, they must specify recipient
+      if (!bodyRecipientId) {
+        return res.status(400).json({ message: 'Recipient ID required for owner replies' });
+      }
+      recipientId = bodyRecipientId;
+    } else {
+      // If borrower is sending, recipient is owner
+      recipientId = item.owner._id;
+      
+      if (recipientId.toString() === req.userId) {
+         return res.status(400).json({ message: 'Cannot message yourself about your own item' });
+      }
     }
 
     const message = new Message({
