@@ -57,7 +57,7 @@ router.get('/', async (req, res) => {
     sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
 
     const items = await Item.find(query)
-      .populate('owner', 'name profileImage rating campus')
+      .populate('owner', 'name profileImage rating reviewCount campus')
       .sort(sort)
       .limit(limit * 1)
       .skip((page - 1) * limit)
@@ -423,10 +423,10 @@ router.get('/:id/messages', authenticateToken, async (req, res) => {
     const formattedMessages = messages.map(msg => ({
       id: msg._id,
       content: msg.content,
-      senderId: msg.sender._id,
-      senderName: msg.sender.name,
+      senderId: msg.sender ? msg.sender._id : msg.senderId,
+      senderName: msg.sender ? msg.sender.name : 'Unknown User',
       createdAt: msg.createdAt,
-      isOwnMessage: msg.sender._id.toString() === req.userId
+      isOwnMessage: (msg.sender && msg.sender._id.toString() === req.userId) || (msg.senderId && msg.senderId.toString() === req.userId)
     }));
 
     res.json({ messages: formattedMessages });
