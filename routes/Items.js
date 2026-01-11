@@ -4,9 +4,12 @@ const Item = require('../models/Item');
 const LendingRequest = require('../models/LendingRequest');
 const Message = require('../models/Message');
 const authenticateToken = require('../middleware/auth');
+const { cacheMiddleware, cacheKeyGenerators } = require('../middleware/cache');
+const { readLimiter, writeLimiter } = require('../middleware/rateLimit');
+const { invalidateCache } = require('../config/cache');
 
-// Get all items with filters
-router.get('/', async (req, res) => {
+// Get all items with filters (with caching)
+router.get('/', readLimiter, cacheMiddleware(300, cacheKeyGenerators.itemsList), async (req, res) => {
   try {
     const {
       category,
@@ -27,55 +30,76 @@ router.get('/', async (req, res) => {
     if (availability) query.availability = availability;
     if (campus) query['location.campus'] = campus;
     if (req.query.owner === 'me') {
-  if (req.headers.authorization) {
-    try {
-      const jwt = require('jsonwebtoken');
-      const token = req.headers.authorization.replace('Bearer ', '');
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      query.owner = decoded.userId;
-    } catch (err) {
-      return res.status(401).json({ message: 'Invalid token' });
+      if (req.headers.authorization) {
+        try {
+          const jwt = require('jsonwebtoken');
+          const token = req.headers.authorization.replace('Bearer ', '');
+          const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          query.owner = decoded.userId;
+        } catch (err) {
+          return res.status(401).json({ message: 'Invalid token' });
+        }
+      } else {
+        return res.status(401).json({ message: 'Authentication required' });
+      }
     }
-  } else {
-    return res.status(401).json({ message: 'Authentication required' });
-  }
-}
     if (minPrice || maxPrice) {
       query.dailyRate = {};
       if (minPrice) query.dailyRate.$gte = Number(minPrice);
       if (maxPrice) query.dailyRate.$lte = Number(maxPrice);
     }
     if (search) {
-      query.$or = [
-        { title: { $regex: search, $options: 'i' }, isActive: true },
-        { description: { $regex: search, $options: 'i' }, isActive: true },
-        { tags: { $regex: search, $options: 'i' }, isActive: true }
-      ];
+      // Use text search for better performance with indexes
+      query.$text = { $search: search };
     }
 
     const sort = {};
-    sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
+    if (search && query.$text) {
+      // Sort by text relevance score when searching
+      sort.score = { $meta: 'textScore' };
+    } else {
+      sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
+    }
 
+    // Optimize query with lean() for better performance
     const items = await Item.find(query)
       .populate('owner', 'name profileImage rating reviewCount campus')
       .sort(sort)
       .limit(limit * 1)
       .skip((page - 1) * limit)
+      .lean() // Returns plain JavaScript objects instead of Mongoose documents
       .exec();
 
-    const count = await Item.countDocuments(query);
-
-    let responseItems = items;
-    if (req.query.includeBookingCount === 'true') {
-      const activeStatuses = ['Pending', 'Accepted', 'Active'];
-      const withCounts = await Promise.all(
-        items.map(async (itemDoc) => {
-          const bookingCount = await LendingRequest.countDocuments({
-            item: itemDoc._id,
+    // Count documents in parallel for better performance
+    co// Optimize: Get all booking counts in one query
+      const itemIds = items.map(item => item._id);
+      const bookingCounts = await LendingRequest.aggregate([
+        {
+          $match: {
+            item: { $in: itemIds },
             status: { $in: activeStatuses }
-          });
-          const obj = itemDoc.toObject();
-          obj.bookingCount = bookingCount;
+          }
+        },
+        {
+          $group: {
+            _id: '$item',
+            count: { $sum: 1 }
+          }
+        }
+      ]);
+      
+      // Create a map for quick lookup
+      const countMap = new Map(
+        bookingCounts.map(bc => [bc._id.toString(), bc.count])
+      );
+      
+      responseItems = items.map(item => ({
+        ...item,
+        bookingCount: countMap.get(item._id.toString()) || 0
+      }));
+    }
+
+    const count = await countPromise;     obj.bookingCount = bookingCount;
           return obj;
         })
       );
