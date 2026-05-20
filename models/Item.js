@@ -20,6 +20,11 @@ const itemSchema = new mongoose.Schema({
     required: true,
     enum: ['Electronics', 'Books', 'Sports Equipment', 'Tools', 'Musical Instruments', 'Furniture', 'Appliances', 'Other']
   },
+  listingType: {
+    type: String,
+    enum: ['Buy', 'Sell', 'Rent'],
+    default: 'Rent'
+  },
   images: [{
     type: String
   }],
@@ -28,14 +33,16 @@ const itemSchema = new mongoose.Schema({
     enum: ['New', 'Like New', 'Good', 'Fair', 'Poor'],
     default: 'Good'
   },
+  price: {
+    type: Number,
+    min: 0
+  },
   dailyRate: {
     type: Number,
-    required: true,
     min: 0
   },
   securityDeposit: {
     type: Number,
-    required: true,
     min: 0
   },
   availability: {
