@@ -71,40 +71,36 @@ router.get('/', readLimiter, cacheMiddleware(300, cacheKeyGenerators.itemsList),
       .exec();
 
     // Count documents in parallel for better performance
-    co// Optimize: Get all booking counts in one query
-      const itemIds = items.map(item => item._id);
-      const bookingCounts = await LendingRequest.aggregate([
-        {
-          $match: {
-            item: { $in: itemIds },
-            status: { $in: activeStatuses }
-          }
-        },
-        {
-          $group: {
-            _id: '$item',
-            count: { $sum: 1 }
-          }
-        }
-      ]);
-      
-      // Create a map for quick lookup
-      const countMap = new Map(
-        bookingCounts.map(bc => [bc._id.toString(), bc.count])
-      );
-      
-      responseItems = items.map(item => ({
-        ...item,
-        bookingCount: countMap.get(item._id.toString()) || 0
-      }));
-    }
+    const count = await Item.countDocuments(query);
 
-    const count = await countPromise;     obj.bookingCount = bookingCount;
-          return obj;
-        })
-      );
-      responseItems = withCounts;
-    }
+    // Optimize: Get all booking counts in one query
+    const itemIds = items.map(item => item._id);
+    const activeStatuses = ['pending', 'confirmed', 'active'];
+    
+    const bookingCounts = await LendingRequest.aggregate([
+      {
+        $match: {
+          item: { $in: itemIds },
+          status: { $in: activeStatuses }
+        }
+      },
+      {
+        $group: {
+          _id: '$item',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+    
+    // Create a map for quick lookup
+    const countMap = new Map(
+      bookingCounts.map(bc => [bc._id.toString(), bc.count])
+    );
+    
+    const responseItems = items.map(item => ({
+      ...item,
+      bookingCount: countMap.get(item._id.toString()) || 0
+    }));
 
     res.json({
       items: responseItems,
