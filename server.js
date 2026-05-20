@@ -301,5 +301,5 @@ console.log('Connecting to MongoDB...');
     });
   });
 
-  console.log('Server setup complete!');
+    console.log('Server setup complete!');
 }
