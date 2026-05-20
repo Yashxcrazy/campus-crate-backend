@@ -30,7 +30,8 @@
     "node-cache": "^5.1.2",
     "nodemailer": "^6.9.7",
     "rate-limit-redis": "^4.2.0",
-    "express-mongo-sanitize": "^2.2.0"
+    "express-mongo-sanitize": "^2.2.0",
+    "openai": "^4.20.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
