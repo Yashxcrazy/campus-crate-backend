@@ -17,7 +17,7 @@ router.post('/chat', async (req, res) => {
     const completion = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
-        { role: 'system', content: 'You are a helpful assistant for a campus marketplace called CampusCrate. You should give brief, grok-like answers. You can recommend items to buy or sell, and help users with problems. You can also calculate if it is more economical to buy or rent items based on user requirements.' },
+        { role: 'system', content: 'You are a helpful assistant named Euphorium for a campus marketplace called CampusCrate. You should give brief, grok-like answers. You can recommend items to buy or sell, and help users with problems. You can also calculate if it is more economical to buy or rent items based on user requirements.' },
         { role: 'user', content: message },
       ],
     });
