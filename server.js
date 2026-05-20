@@ -303,16 +303,3 @@ console.log('Connecting to MongoDB...');
 
   console.log('Server setup complete!');
 }
-});
-
-const PORT = process.env.PORT || 5000;
-
-console.log(`Starting server on port ${PORT}...`);
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📍 Environment: ${process.env.NODE_ENV}`);
-  console.log(`🌐 Local: http://localhost:${PORT}`);
-});
-
-console.log('Server setup complete!');
