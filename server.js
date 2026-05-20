@@ -52,10 +52,10 @@ if (cluster.isMaster && process.env.NODE_ENV === 'production') {
   // Import performance monitor
   const performanceMonitor = require('./middleware/performanceMonitor');
   
-  startServer(app);
+  startServer(app, connectDB, redis, { generalLimiter, authLimiter, uploadLimiter }, performanceMonitor);
 }
 
-function startServer(app) {
+function startServer(app, connectDB, redis, limiters, performanceMonitor) {
 
   // Trust proxy - required for apps behind reverse proxies (Render, Heroku, etc.)
   app.set('trust proxy', 1);
@@ -125,7 +125,7 @@ app.use(cors({
   app.use(mongoSanitize());
 
   // Apply general rate limiting to all API routes
-  app.use('/api/', generalLimiter);
+  app.use('/api/', limiters.generalLimiter);
 
 // MongoDB Connection - starts in degraded mode if URI missing
 console.log('Connecting to MongoDB...');
@@ -209,11 +209,11 @@ console.log('Connecting to MongoDB...');
   const authenticateToken = auth;
 
   // Use Routes with specific rate limiters
-  app.use('/api/auth', authLimiter, authRoutes);
+  app.use('/api/auth', limiters.authLimiter, authRoutes);
   app.use('/api/items', itemRoutes);
   app.use('/api/lending', lendingRoutes);
   app.use('/api/messages', messageRoutes);
-  app.use('/api/upload', uploadLimiter, uploadRoutes);
+  app.use('/api/upload', limiters.uploadLimiter, uploadRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/reviews', reviewRoutes);
   app.use('/api/admin', adminRoutes);
