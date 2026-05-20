@@ -197,6 +197,7 @@ console.log('Connecting to MongoDB...');
   const adminRoutes = require('./routes/admin');
   const reportRoutes = require('./routes/reports');
   const verificationRoutes = require('./routes/verificationRequests');
+  const aiRoutes = require('./routes/ai');
 
   // Middleware for authentication
   const auth = require('./middleware/auth');
@@ -213,6 +214,7 @@ console.log('Connecting to MongoDB...');
   app.use('/api/admin', adminRoutes);
   app.use('/api/reports', reportRoutes);
   app.use('/api/verification-requests', auth, verificationRoutes);
+  app.use('/api/ai', aiRoutes);
 
   // Health check
   app.get('/health', (req, res) => {
