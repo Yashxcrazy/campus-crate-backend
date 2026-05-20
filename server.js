@@ -166,7 +166,7 @@ console.log('Connecting to MongoDB...');
   // Initialize Redis connection (optional - for caching)
   console.log('Connecting to Redis...');
   redis.connectRedis();
-
+  
   // Add middleware to check DB connection for API routes
   app.use('/api/', (req, res, next) => {
     if (!process.env.MONGODB_URI) {
@@ -185,6 +185,11 @@ console.log('Connecting to MongoDB...');
         message: 'Database connection unavailable. Please try again shortly.',
         status: 503
       });
+    }
+
+    next();
+  });
+
   // Import Routes
   console.log('Loading routes...');
   const authRoutes = require('./routes/auth');
@@ -219,10 +224,9 @@ console.log('Connecting to MongoDB...');
   // Health check
   app.get('/health', (req, res) => {
     const metrics = performanceMonitor.getMetrics();
-    
     res.status(200).json(metrics);
   });
-  
+
   // Metrics endpoint (detailed performance data)
   app.get('/api/metrics', authenticateToken, (req, res) => {
     // Only allow admins to view detailed metrics
@@ -231,13 +235,13 @@ console.log('Connecting to MongoDB...');
       if (!user || user.role !== 'admin') {
         return res.status(403).json({ message: 'Access denied' });
       }
-      
       const metrics = performanceMonitor.getMetrics();
       res.json(metrics);
     }).catch(() => {
       res.status(500).json({ message: 'Error fetching metrics' });
     });
   });
+
   // Root route
   app.get('/', (req, res) => {
     res.json({ 
@@ -277,7 +281,6 @@ console.log('Connecting to MongoDB...');
   });
 
   const PORT = process.env.PORT || 5000;
-
   console.log(`Starting server on port ${PORT}...`);
 
   const server = app.listen(PORT, () => {
