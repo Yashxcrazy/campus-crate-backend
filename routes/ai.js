@@ -2,9 +2,15 @@ const express = require('express');
 const router = express.Router();
 const OpenAI = require('openai');
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+function createOpenAIClient() {
+  const apiKey = process.env.OPENAI_API_KEY;
+
+  if (!apiKey) {
+    return null;
+  }
+
+  return new OpenAI({ apiKey });
+}
 
 router.post('/chat', async (req, res) => {
   const { message } = req.body;
@@ -14,6 +20,14 @@ router.post('/chat', async (req, res) => {
   }
 
   try {
+    const openai = createOpenAIClient();
+
+    if (!openai) {
+      return res.status(500).json({
+        error: 'OPENAI_API_KEY is not configured on the server',
+      });
+    }
+
     const completion = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
