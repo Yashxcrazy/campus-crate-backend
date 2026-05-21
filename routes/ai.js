@@ -44,3 +44,13 @@ router.post('/chat', async (req, res) => {
 });
 
 module.exports = router;
+
+// Health/readiness endpoint for AI
+router.get('/ready', (req, res) => {
+  const openai = createOpenAIClient();
+  if (!openai) {
+    return res.status(200).json({ ready: false, reason: 'OPENAI_API_KEY not configured' });
+  }
+
+  return res.status(200).json({ ready: true });
+});
