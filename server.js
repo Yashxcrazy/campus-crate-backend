@@ -55,7 +55,7 @@ if (cluster.isMaster && process.env.NODE_ENV === 'production') {
   startServer(app, connectDB, redis, { generalLimiter, authLimiter, uploadLimiter }, performanceMonitor);
 }
 
-function startServer(app, connectDB, redis, limiters, performanceMonitor) {
+async function startServer(app, connectDB, redis, limiters, performanceMonitor) {
 
   // Trust proxy - required for apps behind reverse proxies (Render, Heroku, etc.)
   app.set('trust proxy', 1);
@@ -149,9 +149,17 @@ console.log('Connecting to MongoDB...');
   });
   
   // Initialize database connection with optimized pool settings
-  connectDB().then(() => {
+  try {
+    const connectPromise = connectDB();
+    const timeoutMs = Number(process.env.DB_CONNECT_TIMEOUT_MS) || 10000;
+
+    const conn = await Promise.race([
+      connectPromise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('DB connect timeout')), timeoutMs))
+    ]).catch(err => { throw err; });
+
     mongoReady = mongoose.connection.readyState === 1;
-    
+
     // Create indexes for better query performance (only in production)
     if (process.env.NODE_ENV === 'production' && mongoReady) {
       const { createIndexes } = require('./utils/dbIndexes');
@@ -159,9 +167,10 @@ console.log('Connecting to MongoDB...');
         console.error('Error creating indexes:', err);
       });
     }
-  }).catch(err => {
-    console.error('Database connection failed:', err);
-  });
+  } catch (err) {
+    console.error('Database connection failed or timed out:', err && err.message ? err.message : err);
+    mongoReady = false;
+  }
 
   // Initialize Redis connection (optional - for caching)
   console.log('Connecting to Redis...');
